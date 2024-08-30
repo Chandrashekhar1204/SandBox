@@ -1,0 +1,4 @@
+[submodule "sandbox-sdk"]
+	path = sandbox-sdk
+	url = git@codebits.abb.com:drives-sw-common/sandbox-sdk.git
+	branch = development

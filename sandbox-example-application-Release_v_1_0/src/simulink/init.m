@@ -1,0 +1,1 @@
+load_system('../../sandbox-sdk/src/simulink_library/sandbox_lib.slx')

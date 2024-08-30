@@ -1,0 +1,17 @@
+
+sdk_dir = 'sandbox-sdk'
+
+src_dir = '#src'
+applications = \
+{
+    'simulink': f'{src_dir}/simulink/sandbox_application.py',
+    'c++': f'{src_dir}/c++/sandbox_application.py',
+}
+
+# Workaround for slow SCons default environment creation time
+# if not manually creating the default environment with tools = [], then the default environment is created
+# searching for msvc tools, which takes a lot of time (5..10 seconds)
+import SCons
+env = SCons.Defaults.DefaultEnvironment(tools = [])
+
+SConscript(f'{sdk_dir}/SConstruct', exports={'build_dir': '#build', 'src_dir': src_dir, 'applications': applications})

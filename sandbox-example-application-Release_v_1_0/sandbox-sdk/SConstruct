@@ -1,0 +1,117 @@
+##############################################################################################################################
+# (C) Copyright 2019 ABB. All rights reserved.
+##############################################################################################################################
+# Subsystem: Build tools
+# Description: Top-level SCons build control script
+#
+# Related documents:
+#
+##############################################################################################################################
+import SCons
+import sys
+
+
+# import external arguments in case this SConstruct is used as a sub-SConstruct
+try:
+    Import('build_dir')
+except:
+    build_dir = 'build'
+try:
+    Import('src_dir')
+except:
+    src_dir = 'src'
+Import('applications')
+
+def AbsPath(relative_path):
+    if relative_path.startswith('#'):
+        abspath = Dir('#').srcnode().abspath + '\\' + relative_path[1:]
+    else:
+        abspath = Dir('.').srcnode().abspath + '\\' + relative_path
+
+    import os
+    return os.path.normpath(abspath)
+
+tools_dir = AbsPath('tools')
+compiler_dir = AbsPath('compilers')
+sdk_dir = AbsPath('.')
+
+supported_architectures = ['x86', 'x86_64', 'aarch64']
+
+import SCons.Script as SC    # for AddOption and Help
+SC.AddOption('--architecture', type='string', dest="architecture", default="all",
+             help=f"Specify which architecture(s) to build application for [all, {supported_architectures}]. Multiple values should be comma-separated.")
+SC.AddOption('--verbose', action="store_true", dest="verbose_option", default=False,
+                help="Takes no arguments. Show full command line of tools (e.g. compiler). Not all tools are currently being suppressed.")
+SC.AddOption('--auto_install', action="store_true", dest="auto_install", default=False,
+                help="Automatically accept installation of tools without asking questions.")
+
+# validate architectures command line option input
+architectures_string = SC.GetOption('architecture')
+if architectures_string == "all":
+    architectures_string = ', '.join(supported_architectures)
+
+architectures = architectures_string.split(',')
+architectures = [arch.strip() for arch in architectures]
+for arch in architectures:
+    if arch not in supported_architectures:
+        raise ValueError(f"Invalid value for architecture: {arch}")
+    
+
+for architecture in architectures:
+    print(f'\n=== Building for architecture: {architecture} ===')
+
+    for application_name, sconscript_path in applications.items():
+        print(f'== Building application: {application_name} ==')
+        env = SConscript('create_build_environment.py', exports='compiler_dir sdk_dir architecture')
+
+
+        env.VariantDir(variant_dir=build_dir, src_dir=src_dir, duplicate=1)
+        # With VariantDir() source files must be referenced form the build directory (even though duplicate=0)
+        source_dir = build_dir
+
+        sandbox_lib = 'sandbox_lib'
+        sandbox_lib_folder = 'application_api'
+        sandbox_lib_extension = 'lib'
+        sandbox_lib_path = f"{sandbox_lib_folder}/{architecture}/{sandbox_lib}.{sandbox_lib_extension}"
+
+        source_nodes = env.SConscript(sconscript_path, exports='env', variant_dir=f'{build_dir}/{application_name}/{architecture}', duplicate=0)
+
+        object_nodes = []
+        for source_node in source_nodes:
+            object_nodes.append(env.StaticObject(source_node))
+            
+        if len(object_nodes) == 0:
+            continue
+
+        arch_build_dir = f'{build_dir}/{application_name}/{architecture}'
+
+        if architecture in ['x86', 'x86_64']:
+            env['STATIC_AND_SHARED_OBJECTS_ARE_THE_SAME']=1     # needed to allow linking of static objects into a shared library
+            application_artifact  = env.SharedLibrary(
+                target  = f'{arch_build_dir}/sandbox_application',
+                source  = [object_nodes, sandbox_lib_path],
+                # LIBS = [],
+                # LIBPATH = [],
+            )
+
+        elif architecture == 'aarch64':
+            # add linker script/configuration file to linker flags
+            linker_config_file = f'{sdk_dir}/src/lscript.ld'
+            env.Append(LINKFLAGS = f'-T{linker_config_file}')
+
+            application_output = env.Program(
+                target  = [
+                    f'{arch_build_dir}/sandbox_application.elf',
+                    f'{arch_build_dir}/sandbox_application.map',
+                ],
+                source  = [object_nodes, sandbox_lib_path],
+            )
+            Depends(application_output, linker_config_file)      # TODO unhardcode
+            application_program = application_output[0]
+            
+            lp_name = 'sandbox_application.lp'
+            application_lp = env.SConscript('tools/ucon/generate_sandbox_lp.py', exports={
+                'env': env, 'lp_name': lp_name, 'build_dir': Dir(arch_build_dir).abspath, 'tools_dir':tools_dir, 'program': application_program})
+            application_artifact = application_lp
+
+        env.Alias(application_name, application_artifact)

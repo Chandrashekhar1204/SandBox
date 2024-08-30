@@ -1,0 +1,13 @@
+*.slxc
+/.sconsign.dblite
+
+sandbox_application_grt_rtw
+slprj
+*.autosave
+
+build/*
+**/__pycache__/**
+
+compilers
+
+python_requirements.txt

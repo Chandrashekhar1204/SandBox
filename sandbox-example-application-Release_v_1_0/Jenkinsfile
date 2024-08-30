@@ -1,0 +1,17 @@
+// This file is used for building the example application(s) in a Jenkins continuous integration (CI) environment.
+
+node('Sandbox_SDK') {
+    checkout([
+        $class: "GitSCM",
+        branches: scm.branches,
+        userRemoteConfigs: scm.userRemoteConfigs,
+        extensions: [[
+            $class: 'SubmoduleOption', 
+            parentCredentials: true, 
+            recursiveSubmodules: true, 
+            reference: '', 
+            trackingSubmodules: false]]
+    ])
+    
+    bat 'build.bat --architecture=all --auto_install'
+}
